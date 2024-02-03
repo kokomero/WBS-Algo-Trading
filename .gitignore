@@ -1,0 +1,6 @@
+/.mypy_cache
+/.vscode
+/WBS Algo Trading.code-workspace
+/__pycache__
+/prices.csv
+/project.py
