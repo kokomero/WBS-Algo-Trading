@@ -1,3 +1,5 @@
+"""This module was used to download the initial data set"""
+
 import pandas as pd
 import yfinance as yf
 
