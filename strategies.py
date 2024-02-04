@@ -40,7 +40,7 @@ def compound_cash(cashflows: pd.Series, daily_rate: pd.Series) -> pd.Series:
     df.columns = ['cashflows', 'd_rate']
 
     # Get difference of between timestamps and compute the daily cash return
-    df = df.assign(days=lambda df: df.index.diff().days.fillna(0))\
+    df = df.assign(days=lambda df: df.index.to_series().diff().dt.days.fillna(0))\
            .assign(interest=lambda x: x.d_rate*x.days/365)\
            .assign(compounded=0.0)
 
@@ -110,9 +110,10 @@ def run_sma_strategy(prices: pd.DataFrame,
         pd.DataFrame: DataFrame with the trading strategy, including
         cost and PnL
     """
-    # Compute underlying instrinsic stats: returns and volatility
+    # Compute underlying instrinsic stats: returns and volatility and year fraction for each trading day
     price_df=prices.assign(close_ret=lambda df: estimators.get_returns(df.close))\
-                   .assign(benchmark_vol=lambda df: estimators.ewma_vol(df.close_ret))
+                   .assign(benchmark_vol=lambda df: estimators.ewma_vol(df.close_ret))\
+                   .assign(year_frac=lambda df: df.index.to_series().diff().dt.days.fillna(0)/365)
     
     # Compute signals and features: Run short/long SMA and generate trading signals
     price_df=price_df.assign(sma_short=lambda df: estimators.moving_average(df.close, days=params.short_sma_window))\
@@ -137,7 +138,7 @@ def run_sma_strategy(prices: pd.DataFrame,
     # the underlying
     # The cash transaction at each time considers execution of shares plus costs
     price_df=price_df.assign(execution_cost=lambda df: (df.executed_shares.abs()*df.close*(params.execution_fee+params.mean_slippage)).fillna(value=0.0))\
-                     .assign(holding_cost=lambda df: np.where(df.shares_held < 0, -1.0*df.shares_held*df.close*params.borrowing_cost*(df.index.diff().days.fillna(0))/365, 0))\
+                     .assign(holding_cost=lambda df: np.where(df.shares_held < 0, -1.0*df.shares_held*df.close*params.borrowing_cost*df.year_frac, 0))\
                      .assign(cash_transaction=lambda df: -df.executed_shares.fillna(value=0.0)*df.close-df.execution_cost-df.holding_cost)
     
     # Set initial investment on the , this is a funded strategy
