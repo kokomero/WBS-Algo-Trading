@@ -299,9 +299,8 @@ running the strategy on only this portion of the dates
 
 #Define training and test set
 training_size = 0.6
-test_size = 1-training_size
 data_set_size = prices_df.shape[0]
-split_index = int(data_set_size*test_size)
+split_index = int(data_set_size*training_size)
 training_df = prices_df.iloc[0:split_index]
 test_df = prices_df.iloc[split_index:]
 
@@ -343,14 +342,29 @@ for w_short in range(2, 50, 5):
             calc_min = (acc/(lapse-init_time))*60
             print( f"Evaluating {sma_cross_params.short_sma_window}:{sma_cross_params.long_sma_window}, calc_min: {calc_min}")
 
-for k,v in perf_cache.items():
-    print(f"Parameters: {k}, Perf: {v['return'] + v['omega_ratio']/10}")
+# define the objective function
+def perf_obj_func( strat : dict ) -> float:
+    """Define a performance objective function, combination of the different
+    risk measures of a stratregy performance
 
-# Evaluation on test_set
+    Args:
+        strat (dict): dict with the different values for the different
+        performance measures, as returned by calc_performance function
+    
+    Returns
+        float: objective function
+    """
+    return strat['return'] + strat['omega_ratio']/10
+
+for k,v in perf_cache.items():
+    print(f"Parameters: {k}, Perf: {perf_obj_func(v)}")
+
+# Choose best strategy according to performance function
 strategies = [(k,v) for k,v in perf_cache.items()]
-performances = [v['return'] + v['omega_ratio']/10 for k, v in strategies]
+performances = [perf_obj_func(v) for k, v in strategies]
 winner_strategy = strategies[np.argmax(np.array( performances))]
 
+# Evaluation on test_set
 sma_cross_params.short_sma_window = winner_strategy[0][0]
 sma_cross_params.long_sma_window = winner_strategy[0][1]
 strategy_df = strat.run_sma_strategy(prices=test_df,
@@ -361,5 +375,6 @@ strategy_perf = pe.calc_performance(df=strategy_df,
                                     params=perf_params,
                                     price_rets='strategy_returns')
 
+pe.performance_df(strategy_perf, f"Winner on {underlying}")
 
 print( 'Stop here')
