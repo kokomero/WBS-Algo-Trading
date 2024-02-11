@@ -94,6 +94,41 @@ def signal_sma(df: pd.DataFrame, feature_col: str, trigger_col: str = 'close') -
 
     return position
 
+def signal_sma_crossover(df: pd.DataFrame, trigger_col: str = 'close') -> pd.Series:
+    """Generate buy/sell signals resulted from a cross-over of two SMA
+    time-series with different window length
+
+    For the case of a cross-over strategy, each of the SMA time-series will be 
+    stored in the sma_short, sma_long column. The trigger field to calculate
+    the SMA will be, usually, closing prices, so that the execution
+    of signal takes places at the end of the trading day when the crossing
+    happens
+
+    Args:
+        df (pd.DataFrame): dataframe with price series as well as calculated
+        SMA
+        trigger_col (str, optional): name of columns triggering the buy/sell 
+        actions. Defaults to 'close'.
+
+    Returns:
+        pd.Series: Series for each date in the data set with -1.0 if the 
+        signal is to sell, +1.0 if the signal is to buy, and nan otherwise
+    """
+    # Get SMA and closing series, current and delayed series
+    long_sma, short_sma = df['sma_long'], df['sma_short']
+    long_sma_d, short_sma_d = long_sma.shift(-1), short_sma.shift(-1)
+
+    # Identify cross below/cross above signals
+    idx_cross_above = (long_sma > short_sma) & (long_sma_d < short_sma_d)
+    idx_cross_below = (long_sma < short_sma) & (long_sma_d > short_sma_d)
+
+    # Signals for each crossing
+    position = pd.Series(index=df.index, dtype=np.float32, data=np.nan)
+    position.loc[idx_cross_below] = -1.0 # Sell if price cross from below
+    position.loc[idx_cross_above] = +1.0 # Buy if price cross from above
+
+    return position
+
 def run_sma_strategy(prices: pd.DataFrame,
                      params: SMA_Params) -> pd.DataFrame:
     """Run a SMA strategy.
@@ -117,8 +152,16 @@ def run_sma_strategy(prices: pd.DataFrame,
     
     # Compute signals and features: Run short/long SMA and generate trading signals
     price_df=price_df.assign(sma_short=lambda df: estimators.moving_average(df.close, days=params.short_sma_window))\
-                     .assign(sma_long=lambda df: estimators.moving_average(df.close, days=params.long_sma_window))\
-                     .assign(signal=lambda df: signal_sma(df, params.feature_col, trigger_col='close'))
+                     .assign(sma_long=lambda df: estimators.moving_average(df.close, days=params.long_sma_window))
+    
+    # Chose the SMA strategy, either vs long or short window, or the cross-over of the 
+    # two SMA time series
+    if params.feature_col in ['sma_long', 'sma_long']:
+        price_df = price_df.assign(signal=lambda df: signal_sma(df, params.feature_col, trigger_col='close'))
+    elif params.feature_col == 'crossover':
+        price_df = price_df.assign(signal=lambda df: signal_sma_crossover(df, trigger_col='close'))
+    else:
+        raise Exception( f"Feature column {params.feature_col} not valid")
     
     #Apply vol scaling, scale bets according to underlying volatility
     if params.vol_scaling_func is not None:
